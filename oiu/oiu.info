@@ -1,0 +1,8 @@
+; $Id$
+name = OIU
+description = Determine Related Stories.
+package = OIU
+core = 7.x
+php = 5.1
+files[] = oiu.module
+files[] = includes/oiu.views.inc

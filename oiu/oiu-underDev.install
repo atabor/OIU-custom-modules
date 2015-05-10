@@ -1,0 +1,112 @@
+<?php
+// $Id$
+
+/**
+ * Implements hook_install().
+ */
+function oiu_install() {
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function oiu_uninstall() {
+}
+
+/**
+ * Implements hook_schema().
+ */
+function oiu_schema() {
+  
+$schema['related_stories_detail'] = array(
+  'description' => 'Story connections by node id and type',
+  'fields' => array(
+    'nid_story' => array(
+      'description' => 'nid of the base story',
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+    'nid_connected_story' => array(
+      'description' => 'nid of the connected story',
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+    'connector_type' => array(
+      'description' => 'connection node type, eg person or organization',
+      'type' => 'varchar',
+      'length' => '25',
+      'not null' => TRUE,
+    ),
+    'nid_connector' => array(
+      'description' => 'nid of the connecting node',
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+  ),
+);
+
+$schema['related_stories_connection_count'] = array(
+  'description' => 'number of connections between two stories by type',
+  'fields' => array(
+    'nid_story' => array(
+      'description' => 'nid base story',
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+    'nid_connected_story' => array(
+      'description' => 'nid connected story',
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+    'connector_type' => array(
+      'description' => 'connection type',
+      'type' => 'varchar',
+      'length' => '25',
+      'not null' => TRUE,
+    ),
+    'connections_count' => array(
+      'description' => 'number of connections between the stories by this type',
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+  ),
+);
+
+$schema['related_stories_weight'] = array(
+  'description' => 'total weight of the connection between stories',
+  'fields' => array(
+    'nid_story' => array(
+      'description' => 'nid base story',
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+    'nid_connected_story' => array(
+      'description' => 'nid connected story',
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+    'weight' => array(
+      'description' => 'total number of connections (weight)',
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+    'strongest_connection' => array(
+      'description' => 'which connection type adds the most to the weight',
+      'type' => 'varchar',
+      'length' => '25',
+      'not null' => TRUE,
+    ),
+  ),
+);
+
+  return $schema;
+}

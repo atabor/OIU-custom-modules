@@ -1,0 +1,211 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * OIU determine related stories.
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function oiu_permission() {
+  return array(
+    'administer oiu' => array(
+      'title' => t('Administer oiu module'),
+      'description' => t('Perform administration tasks for oiu.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function oiu_views_api() {
+  return array(
+    'api' => 3.0,
+    'path' => drupal_get_path('module', 'oiu') . '/includes',
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+ function oiu_menu() {
+  $items['admin/config/system/oiu'] = array(
+    'title' => 'OIU Relevance Frequency',
+    'description' => 'Run OIU Relevance Ever Xth Cron',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('oiu_cron_settings_form'),
+    'access arguments' => array('administer oiu'),
+    'file' => 'oiu.admin.inc',
+    'file path' => drupal_get_path('module', 'oiu') . '/includes',    
+  );
+ 
+  return $items;
+}
+
+/**
+ * Implements hook_cron().
+ */
+function oiu_cron() {
+
+  $skip_counter = variable_get('oiu_skip_counter', 0);
+  $freq = variable_get('oiu_cron_frequency', 0);
+  
+  if ($skip_counter > $freq) {
+  // running once per day 
+	  $last_run = variable_get('oiu_last_run', REQUEST_TIME);
+	    
+	  oiu_load_data();
+	  
+	  $last_run = REQUEST_TIME;
+	  $skip_counter = 0;
+	  variable_set('oiu_last_run', $last_run);
+	  watchdog('oiu', "last run: " . format_date($last_run, $type='long'));
+  }
+  
+  $skip_counter = $skip_counter + 1;
+  variable_set('oiu_skip_counter', $skip_counter );
+  
+//  drupal_set_message("skip counter: " . strval($skip_counter), 'status');
+}
+
+function oiu_load_data() {
+     
+    $connection_types = array('organization','event','person','theme');
+
+    /* detail table = related_stories_detail **********************
+    nid_story           int(11)     UNSIGNED            
+    nid_connected_story	int(11)     UNSIGNED            => from field table as entity_id
+    connector_type      varchar(25)	utf8_general_ci		  => from array $connection_types[]
+    nid_connector       int(11)     UNSIGNED	
+    */
+    /* count by type table = related_stories_connection_count *****
+    nid_story           int(11)     UNSIGNED            
+    nid_connected_story	int(11)     UNSIGNED
+    connector_type      varchar(25)	utf8_general_ci		  
+    connections_count   int(11)     UNSIGNED            => count of nid_connector's 
+    */
+    /* story weight = related_stories_weight **********************
+    nid_story           int(11)     UNSIGNED            
+    nid_connected_story	int(11)     UNSIGNED
+    weight              int(11)     UNSIGNED            => sum of count of nid_connector's 
+    strongest_connection varchar(25)	utf8_general_ci		=> connector_type with highest count  
+    */
+
+
+    /* *************************************
+     * create weighting table **************
+     * *************************************/
+
+    // clear files
+    $num_deleted = db_delete('related_stories_detail')
+    	->execute();
+    $num_deleted = db_delete('related_stories_connection_count')
+    	->execute();
+    $num_deleted = db_delete('related_stories_weight')
+    	->execute();
+    //watchdog('oiu', 'clearing files');	  
+
+
+    // ***** 
+    // ***** write detail data
+
+    foreach ($connection_types as $conn_type) {
+
+      $connector_file_name = 'field_data_field_about' . $conn_type;
+      $join_string = 'b.field_about' . $conn_type . '_nid = r.field_about' . $conn_type . '_nid';
+      
+      /*
+      $query = "INSERT INTO related_stories_detail " 
+          . "SELECT b.entity_id AS 'nid_story', r.entity_id AS 'nid_connected_story', '" . $conn_type . "' AS 'connector_type', " 
+            . "b.field_about" . $conn_type . "_nid AS 'nid_connector' FROM " 
+          . $connector_file_name . " b INNER JOIN " . $connector_file_name . " r " 
+          . "ON b.field_about" . $conn_type . "_nid = r.field_about" . $conn_type . "_nid " 
+          . "WHERE b.entity_id = 15 AND b.entity_id <> r.entity_id";
+      mysql_query(($query);
+      */
+      
+      $query = db_select($connector_file_name, 'b');
+        $query->join($connector_file_name, 'r', $join_string);
+        $query->addField('b', 'entity_id', 'nid_story');
+        $query->addField('r', 'entity_id', 'nid_connected_story');
+        //try this: $query->addField('b', $conn_type, 'connector_type');
+        // $conn_type AS 'connector_type' 
+        // placeholder?
+        $query->addField('b', 'field_about' . $conn_type . '_nid', 'nid_connector');
+        //$query->condition('b.entity_id', 15);
+      db_insert('related_stories_detail')
+        ->from($query)
+        ->execute();
+      // !! correcting for no literals
+      db_update('related_stories_detail')
+        ->fields(array('connector_type' => $conn_type,
+          ))
+        ->condition('connector_type', 'TBD')
+        ->execute();
+    }
+    //watchdog('oiu', 'details loaded');
+
+
+    // 
+    // ***** build the summary from the detail - pt 1 - count by connection type
+    
+    /*   
+    $query = "INSERT INTO related_stories_connection_count " 
+      . "SELECT nid_story, nid_connected_story, connector_type, COUNT(nid_connector) as connections_count FROM related_stories_detail " 
+      . "GROUP BY nid_story, nid_connected_story, connector_type";
+    */
+    
+    $query = db_select('related_stories_detail', 'b');
+      $query->addField('b', 'nid_story', 'nid_story');
+      $query->addField('b', 'nid_connected_story', 'nid_connected_story');
+      $query->addField('b', 'connector_type', 'connector_type');
+      $query->addExpression('COUNT(b.nid_connector)', 'connections_count');
+      $query->groupBy('nid_story');
+      $query->groupBy('nid_connected_story');
+      $query->groupBy('connector_type');
+    db_insert('related_stories_connection_count')
+      ->from($query)
+      ->execute();
+    //watchdog('oiu', 'connections count loaded');
+
+    //  
+    // ***** build the summary from the detail - pt 1-b - tweak relative weights
+
+      db_update('related_stories_connection_count')
+        ->expression('connections_count', 'connections_count * 1.5')
+        ->condition('connector_type', 'event')
+        ->execute();      
+
+    // 
+    // ***** build the summary from the detail - pt 2 determine weight
+    /*
+
+    $query = "INSERT INTO related_stories_weight " 
+        . "SELECT nid_story, nid_connected_story, SUM(connections_count) as weight, 'TBD' as strongest_connection FROM related_stories_connection_count " 
+        . "GROUP BY nid_story, nid_connected_story";
+    $mysqli->query($query);
+
+    */
+    $query = db_select('related_stories_connection_count', 'b');
+      $query->addField('b', 'nid_story', 'nid_story');
+      $query->addField('b', 'nid_connected_story', 'nid_connected_story');
+      $query->addExpression('SUM(b.connections_count)', 'weight');
+      $query->groupBy('nid_story');
+      $query->groupBy('nid_connected_story');
+    db_insert('related_stories_weight')
+      ->from($query)
+      ->execute();
+    db_delete('related_stories_weight')
+      ->where('nid_story = nid_connected_story') // must be WHERE not CONDITION
+      ->execute();
+    
+    //watchdog('oiu', 'weights loaded');*/
+      
+      
+  watchdog('oiu', 'oiu_load_data completed');
+}  
+
+ 
